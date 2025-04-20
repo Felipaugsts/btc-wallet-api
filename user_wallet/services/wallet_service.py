@@ -1,4 +1,4 @@
-from bitcoinlib.wallets import Wallet as BitcoinlibWallet
+from bitcoinlib.wallets import Wallet as BitcoinlibWallet, wallet_exists
 from bitcoinlib.keys import HDKey
 from bitcoinlib.services.services import Service
 from ..models import Wallet, Address, Transaction
@@ -121,113 +121,30 @@ class WalletService:
         
     ## MARK: Balance
 
-    def get_wallet_balance(self, wallet_id):
-        """
-        Obtém o saldo de uma carteira
-        
-        Args:
-            wallet_id (int): ID da carteira
-            
-        Returns:
-            dict: Saldo da carteira em satoshis
-        """
+    def get_wallet_balance(self, data):
         try:
-            wallet = Wallet.objects.get(id=1)
-            bitcoinlib_wallet = BitcoinlibWallet(f"watch_only_1")
-            balance = bitcoinlib_wallet.balance()
-            return { 'satoshi': balance }
-        
+            pub_key = data["pubKey"]
+            wallet_id = data["wallet_id"]
+            wallet_name = data["wallet_name"]
+            wallet_name_full = f"watch_only_{wallet_id}"
+
+            if not wallet_exists(wallet_name_full):
+                BitcoinlibWallet.create(
+                    name=wallet_name_full,
+                    keys=pub_key,
+                    network='bitcoin',
+                    witness_type='segwit'
+                )
+
+            wallet = BitcoinlibWallet(wallet_name_full)
+            wallet.utxos_update()
+            balance = wallet.balance()
+
+            return {
+                "confirmed": balance,
+                "total": balance
+            }
+
         except Exception as e:
-            logger.error(f"Erro ao obter saldo da carteira: {str(e)}")
-            raise
-    
-    ## MARK: Transaction
-     
-    def create_transaction(self, wallet_id, to_address, amount, fee_rate=None):
-        """
-        Cria uma transação não assinada (PSBT) para uso com hardware wallet
-        
-        Args:
-            wallet_id (int): ID da carteira
-            to_address (str): Endereço de destino
-            amount (int): Valor a enviar em satoshis
-            fee_rate (int, optional): Taxa em satoshis por byte
-            
-        Returns:
-            str: PSBT em formato base64
-        """
-        try:
-            wallet = Wallet.objects.get(id=wallet_id)
-            
-            # Verifica se é uma carteira watch-only
-            if wallet.wallet_type != 'watch-only':
-                raise ValueError("Apenas carteiras watch-only são suportadas para esta operação")
-            
-            # Abre a carteira na bitcoinlib
-            bitcoinlib_wallet = BitcoinlibWallet(f"watch_only_{wallet.id}")
-            
-            # Atualiza os UTXOs da carteira
-            bitcoinlib_wallet.utxos_update()
-            
-            # Verifica se há saldo suficiente
-            if bitcoinlib_wallet.balance() < amount:
-                raise ValueError("Saldo insuficiente")
-            
-            # Cria a transação
-            # Nota: bitcoinlib não suporta diretamente a criação de PSBT para carteiras watch-only
-            # Esta é uma implementação simplificada
-            tx = bitcoinlib_wallet.transaction_create(
-                [to_address],
-                [amount],
-                fee=fee_rate,
-                offline=True  # Não transmite a transação
-            )
-            
-            # Retorna a transação em formato serializado
-            return tx.serialize()
-        except Exception as e:
-            logger.error(f"Erro ao criar transação: {str(e)}")
-            raise
-    
-    def broadcast_transaction(self, tx_hex):
-        """
-        Transmite uma transação assinada para a rede Bitcoin
-        
-        Args:
-            tx_hex (str): Transação assinada em formato hexadecimal
-            
-        Returns:
-            str: TXID da transação
-        """
-        try:
-            # Usa o serviço para transmitir a transação
-            txid = self.service.sendrawtransaction(tx_hex)
-            
-            return txid
-        except Exception as e:
-            logger.error(f"Erro ao transmitir transação: {str(e)}")
-            raise
-    
-    def generate_receive_address(self, wallet_id):
-        """
-        Gera um novo endereço de recebimento para uma carteira
-        
-        Args:
-            wallet_id (int): ID da carteira
-            
-        Returns:
-            str: Endereço de recebimento
-        """
-        try:
-            wallet = Wallet.objects.get(id=wallet_id)
-            
-            # Abre a carteira na bitcoinlib
-            bitcoinlib_wallet = BitcoinlibWallet(f"watch_only_{wallet.id}")
-            
-            # Gera um novo endereço
-            addresses = self._generate_addresses(wallet, bitcoinlib_wallet, 1, False)
-            
-            return addresses[0].address
-        except Exception as e:
-            logger.error(f"Erro ao gerar endereço de recebimento: {str(e)}")
+            logger.error(f"Erro ao obter saldo: {str(e)}")
             raise

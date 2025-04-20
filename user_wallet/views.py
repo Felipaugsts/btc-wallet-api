@@ -10,7 +10,6 @@ from .serializers import (
 from .services.wallet_service import WalletService
 import logging
 import requests
-import decimal
 
 logger = logging.getLogger(__name__)
 
@@ -67,35 +66,50 @@ class WalletViewSet(viewsets.ModelViewSet):
                 {"error": "Tipo de carteira não suportado"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-    
-    @action(detail=True, methods=['get'])
+
+    @action(detail=True, methods=['post'])  # <== Mudou de GET para POST
     def balance(self, request, pk=None):
-        """
-        Obtém o saldo de uma carteira
-        """
-        wallet = self.get_object()
         wallet_service = WalletService()
 
+        pub_key = request.data.get("pubKey")
+        wallet_id = pk  # Vem da URL
+        wallet_name = request.data.get("wallet_name", f"watch_only_{wallet_id}")
+
+        if not pub_key:
+            return Response(
+                {"error": "Campo 'pubKey' é obrigatório"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Preço do BTC em BRL
         response = requests.get(
             "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=brl"
         )
         btc_to_brl = response.json().get("bitcoin", {}).get("brl", 0)
 
         try:
-            balance = wallet_service.get_wallet_balance(wallet.id)
+            balance = wallet_service.get_wallet_balance({
+                "pubKey": pub_key,
+                "wallet_id": wallet_id,
+                "wallet_name": wallet_name
+            })
+
             total_btc = balance.get("total", 0) / 100_000_000
             total_brl = round(total_btc * btc_to_brl, 2)
 
-            balance["btcPriceBRL"] = btc_to_brl  
+            balance["btcPriceBRL"] = btc_to_brl
             balance["walletTotalBRL"] = total_brl
-            balance["walletID"] = wallet.id
+            balance["walletID"] = wallet_id
+
             return Response(balance)
+
         except Exception as e:
             logger.error(f"Erro ao obter saldo da carteira: {str(e)}")
             return Response(
-                {"error": f"Falha ao obter saldo da carteira: {str(e)}, id: {wallet.id}"},
+                {"error": f"Falha ao obter saldo da carteira: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
         
     @action(detail=True, methods=['post'])
     def delete(self, request, pk=None): 
