@@ -132,19 +132,11 @@ class WalletService:
             dict: Saldo da carteira em satoshis
         """
         try:
-            wallet = Wallet.objects.get(id=wallet_id)
-            
-            # Abre a carteira na bitcoinlib
-            print("wallet id:", wallet.id)
-            bitcoinlib_wallet = BitcoinlibWallet(f"watch_only_{wallet.id}")
-            
-            # Obtém o saldo
+            wallet = Wallet.objects.get(id=1)
+            bitcoinlib_wallet = BitcoinlibWallet(f"watch_only_1")
             balance = bitcoinlib_wallet.balance()
-            
-            return {
-                'confirmed': balance,
-                'total': balance
-            }
+            return { 'satoshi': balance }
+        
         except Exception as e:
             logger.error(f"Erro ao obter saldo da carteira: {str(e)}")
             raise

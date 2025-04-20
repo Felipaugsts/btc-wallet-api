@@ -82,26 +82,18 @@ class WalletViewSet(viewsets.ModelViewSet):
         btc_to_brl = response.json().get("bitcoin", {}).get("brl", 0)
 
         try:
-      
             balance = wallet_service.get_wallet_balance(wallet.id)
-        
-        # Convertendo o saldo de satoshis para BTC
-            test = round(balance.get("total") / 100_000_000 * btc_to_brl, 2)
-            print("balance total", test)
-            total_btc = balance.get("total", 0) / 100_000_000  # 1 BTC = 100 milhões de satoshis
-
-        # Calculando o valor total em BRL
+            total_btc = balance.get("total", 0) / 100_000_000
             total_brl = round(total_btc * btc_to_brl, 2)
 
-        # Adicionando as informações ao balance
-            balance["btcPriceBRL"] = btc_to_brl  # Preço do BTC em BRL
-            balance["walletTotalBRL"] = total_brl   # Valor total da carteira em BRL
+            balance["btcPriceBRL"] = btc_to_brl  
+            balance["walletTotalBRL"] = total_brl
             balance["walletID"] = wallet.id
             return Response(balance)
         except Exception as e:
             logger.error(f"Erro ao obter saldo da carteira: {str(e)}")
             return Response(
-                {"error": f"Falha ao obter saldo da carteira: {str(e)}"},
+                {"error": f"Falha ao obter saldo da carteira: {str(e)}, id: {wallet.id}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         
