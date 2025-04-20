@@ -131,17 +131,19 @@ SIMPLE_JWT = {
 
 # CORS Configuration
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",         # Vite dev server
-    "http://127.0.0.1:5173",         # Outra forma local
-    "https://client-application-i1q3.onrender.com",  # Hospedado
+    "http://localhost:5173",      
+    "http://127.0.0.1:5173",        
+    "https://client-application-i1q3.onrender.com", 
+    'https://btc-wallet-api.onrender.com'
 ]
 
 CSRF_TRUSTED_ORIGINS = [
-    'https://client-application-i1q3.onrender.com',  # Certifique-se de incluir o protocolo 'https'
+    'https://client-application-i1q3.onrender.com',  
     'http://localhost', 
     'http://127.0.0.1', 
     'http://0.0.0.0', 
-    'http://[::1]'
+    'http://[::1]',
+    'https://btc-wallet-api.onrender.com'
 ]
 
 CORS_ALLOW_HEADERS = [
