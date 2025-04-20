@@ -41,7 +41,8 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'corsheaders',
     'bitcoinlib',
-    'user_auth'
+    'user_auth',
+    'user_wallet'
 ]
 
 MIDDLEWARE = [
