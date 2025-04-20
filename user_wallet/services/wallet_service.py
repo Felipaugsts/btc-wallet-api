@@ -137,17 +137,12 @@ class WalletService:
             # Abre a carteira na bitcoinlib
             print("wallet id:", wallet.id)
             bitcoinlib_wallet = BitcoinlibWallet(f"watch_only_{wallet.id}")
-             
-            # Atualiza o saldo da carteira
-            bitcoinlib_wallet.utxos_update()
             
-            bitcoinlib_wallet.scan(scan_gap_limit=1)
             # Obtém o saldo
             balance = bitcoinlib_wallet.balance()
             
             return {
                 'confirmed': balance,
-                'unconfirmed': 0,  # bitcoinlib não separa saldo confirmado/não confirmado por padrão
                 'total': balance
             }
         except Exception as e:
