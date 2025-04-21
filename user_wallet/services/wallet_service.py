@@ -138,6 +138,7 @@ class WalletService:
 
             wallet = BitcoinlibWallet(wallet_name_full)
             wallet.utxos_update()
+            wallet.scan(scan_gap_limit=1)
             balance = wallet.balance()
 
             return {
