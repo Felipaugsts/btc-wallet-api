@@ -13,7 +13,7 @@ class WalletService:
     """
     
     def __init__(self):
-        self.service = Service()
+        self.service = Service(network='bitcoin', providers=['blockstream', 'blockcypher'])
     ## MARK: Watch only
     def create_watch_only_wallet(self, name, xpub, user):
         """
