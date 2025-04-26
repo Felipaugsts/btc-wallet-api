@@ -4,6 +4,8 @@ from bitcoinlib.services.services import Service
 from ..models import Wallet, Address, Transaction
 import logging
 from django.core.exceptions import ObjectDoesNotExist
+import requests
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +127,6 @@ class WalletService:
         try:
             pub_key = data["pubKey"]
             wallet_id = data["wallet_id"]
-            wallet_name = data["wallet_name"]
             wallet_name_full = f"watch_only_{wallet_id}"
 
             if not wallet_exists(wallet_name_full):
@@ -137,15 +138,142 @@ class WalletService:
                 )
 
             wallet = BitcoinlibWallet(wallet_name_full)
-            wallet.utxos_update()
-            wallet.scan(scan_gap_limit=1)
             balance = wallet.balance()
+            transactions = wallet.transactions_full()
+            pub_key = wallet.wif()
+        
 
             return {
-                "confirmed": balance,
-                "total": balance
+                "total": balance,
+                "transactions": len(transactions),
+                "address": pub_key
             }
 
         except Exception as e:
             logger.error(f"Erro ao obter saldo: {str(e)}")
+            raise
+
+
+
+    def get_user_transactions(self, user):
+        try:
+            result = []
+            wallets = Wallet.objects.filter(user=user)
+
+            print("user wallets", wallets)
+            for wallet in wallets:
+                wallet_name = f"watch_only_{wallet.id}"
+                print(f"Inicializando carteira com o nome: {wallet_name}")
+
+                btc_wallet = BitcoinlibWallet(wallet_name)
+
+                transactions = btc_wallet.transactions()
+
+                for tx in transactions:
+                    print(f"Transação {tx.txid}, Status: {tx.status}, Confirmations: {tx.confirmations}")
+
+                    # Acessando a data da transação
+                    tx_date = getattr(tx, "date", None)
+                    if tx_date:
+                        tx_date = tx_date.strftime('%Y-%m-%d %H:%M:%S')  # Formato legível
+
+                    # Acessando os inputs e outputs para verificar o valor
+                    total_value = 0
+                    for output in tx.outputs:
+                        total_value += output.value
+
+                    # Verificando se a transação foi enviada ou recebida
+                    user_address = "seu_endereco_aqui"  # Endereço do usuário
+                    is_sent = False
+                    is_received = False
+
+                    for input_tx in tx.inputs:
+                        if input_tx.address == user_address:
+                            is_sent = True
+
+                    for output_tx in tx.outputs:
+                        if output_tx.address == user_address:
+                            is_received = True
+
+                    transaction_type = "sent" if is_sent else "received" if is_received else "unknown"
+
+                    # Adicionando as informações ao resultado
+                    result.append({
+                        "network": str(tx.network) if tx.network else "",
+                        "confirmations": tx.confirmations,
+                        "status": tx.status,
+                        "date": tx_date,
+                        "value": total_value,
+                        "transaction_type": transaction_type,
+                    })
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Erro ao obter transações do usuário: {str(e)}")
+            raise
+
+
+    def get_all_wallets(self, wallets):
+        try:
+            from bitcoinlib.wallets import Wallet as BitcoinlibWallet
+            import requests
+
+            result = []
+
+            # Obtém os dados básicos das carteiras do usuário
+            wallets_data = list(wallets.values_list('id', 'name'))
+            print("user wallets:", wallets_data)
+
+            # Consulta o valor atual do BTC em BRL
+            response = requests.get(
+                "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=brl"
+            )
+            btc_to_brl = response.json().get("bitcoin", {}).get("brl", 0)
+
+            if response.status_code == 200:
+                print("fetched BTC sussesfully")
+            
+
+            for wallet_id, wallet_name in wallets_data:
+                watch_wallet_name = f"watch_only_{wallet_id}"
+
+                # Verifica se a carteira existe
+                if not wallet_exists(watch_wallet_name):
+                    logger.info(f"Carteira {watch_wallet_name} não encontrada. Pulando...")
+                    continue
+
+                try:
+                    print("watch_wallet_name 123", watch_wallet_name)
+                    btc_wallet = BitcoinlibWallet(watch_wallet_name)
+
+                    # Obtém saldo e transações
+                    balance_satoshi = btc_wallet.balance()
+                    transactions = btc_wallet.transactions_full()
+
+                    # Conversões
+                    btc_value = balance_satoshi / 100_000_000
+                    fiat_value = round(btc_value * btc_to_brl, 2)
+
+                    result.append({
+                        "id": wallet_id,
+                        "name": wallet_name,
+                        "balanceSatoshi": balance_satoshi,
+                        "btcValue": f"{btc_value:.8f}",
+                        "fiatValue": f"{fiat_value:.2f}",
+                        "address": btc_wallet.get_key().address,
+                        "transactions": len(transactions),
+                        "color": '#F7931A',
+                        "change": 3.12  # Valor mockado; pode ser dinâmico se desejar
+                    })
+
+                except Exception as inner_e:
+                    logger.warning(f"Erro ao processar carteira {wallet_id}: {inner_e}")
+                    continue
+
+            print("wallets results:", result)
+            return result
+
+        except Exception as e:
+            logger.error(f"Erro ao obter carteiras do usuário: {str(e)}")
             raise
