@@ -21,6 +21,7 @@ class WalletService:
     def __init__(self):
         self.service = Service(network='bitcoin', providers=['blockstream', 'blockcypher'])
     ## MARK: Watch only
+
     def create_watch_only_wallet(self, name, xpub, user):
         try:
             # Cria a carteira no banco de dados
@@ -31,14 +32,27 @@ class WalletService:
                 user=user
             )
             
+            # Determina o tipo de xpub e configura os parâmetros apropriados
+            if xpub.startswith('xpub'):
+                purpose = 44
+                witness_type = 'legacy'
+            elif xpub.startswith('ypub'):
+                purpose = 49
+                witness_type = 'p2sh-segwit'
+            elif xpub.startswith('zpub'):
+                purpose = 84
+                witness_type = 'segwit'
+            else:
+                raise ValueError("Tipo de xpub não reconhecido")
+
             # Cria a carteira na bitcoinlib
             bitcoinlib_wallet = BitcoinlibWallet.create(
                 name=f"watch_only_{wallet.id}",
                 keys=xpub,
                 network='bitcoin',
-                purpose=44,  # Use 44 para BIP44, 49 para P2SH-SegWit, ou 84 para SegWit nativo
-                witness_type='segwit',  # ou 'p2sh-segwit' ou None para legacy
-                scheme='account'
+                purpose=purpose,
+                witness_type=witness_type,
+                scheme='bip32'  # Use 'bip32' em vez de 'account'
             )
             
             # Gera alguns endereços iniciais
@@ -48,32 +62,20 @@ class WalletService:
         except Exception as e:
             logger.error(f"Erro ao criar carteira watch-only: {str(e)}")
             raise
+
     ## MARK: Address
 
     def _generate_addresses(self, wallet, bitcoinlib_wallet, count=1, is_change=False):
         addresses = []
         
         try:
-            # Determina o índice inicial
-            last_address = Address.objects.filter(
-                wallet=wallet,
-                is_change=is_change
-            ).order_by('-index').first()
-            
-            start_index = 0 if last_address is None else last_address.index + 1
-            
-            # Gera os endereços
-            for i in range(start_index, start_index + count):
-                # Determina o caminho de derivação
-                account = 0  # Usamos a conta 0 por padrão
-                change = 1 if is_change else 0
-                
-                # Derive o endereço usando o método get_key
-                key = bitcoinlib_wallet.get_key(account_id=account, change=change, address_index=i)
+            for i in range(count):
+                # Use o método get_key para derivar o endereço
+                key = bitcoinlib_wallet.get_key(change=int(is_change), address_index=i)
                 address_str = key.address
                 
-                # Constrói o caminho para salvar no banco de dados
-                path = f"m/{bitcoinlib_wallet.purpose}'/{bitcoinlib_wallet.network.bip44_cointype}'/{account}'/{change}/{i}"
+                # O caminho é automaticamente gerado pela bitcoinlib
+                path = key.path
                 
                 # Salva o endereço no banco de dados
                 address = Address.objects.create(
