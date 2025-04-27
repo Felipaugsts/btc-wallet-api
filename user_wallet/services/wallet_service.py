@@ -1,6 +1,9 @@
+import sys
 from bitcoinlib.wallets import Wallet as BitcoinlibWallet, wallet_exists
 from bitcoinlib.keys import HDKey
 from bitcoinlib.services.services import Service
+from django.http import JsonResponse
+import pkg_resources
 from ..models import Wallet, Address, Transaction
 import logging
 from django.core.exceptions import ObjectDoesNotExist
@@ -9,7 +12,7 @@ from datetime import datetime
 from ..models import BitcoinPriceCache
 from django.utils import timezone
 from django.db import transaction
-
+import bitcoinlib
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +21,37 @@ class WalletService:
     Serviço para gerenciar carteiras Bitcoin usando bitcoinlib
     """
     
+    def check_bitcoinlib_version(request):
+        try:
+            # Tenta obter a versão de várias maneiras
+            version = getattr(bitcoinlib, '__version__', None)
+            if version is None:
+                try:
+                    version = pkg_resources.get_distribution('bitcoinlib').version
+                except pkg_resources.DistributionNotFound:
+                    version = "Não foi possível determinar a versão"
+
+            bitcoinlib_path = getattr(bitcoinlib, '__file__', "Caminho não encontrado")
+
+            logger.info(f"Versão da bitcoinlib: {version}")
+            logger.info(f"Caminho da bitcoinlib: {bitcoinlib_path}")
+
+            return JsonResponse({
+                "status": "success",
+                "bitcoinlib_version": version,
+                "bitcoinlib_path": bitcoinlib_path,
+                "python_path": sys.path
+            })
+
+        except ImportError as e:
+            logger.error(f"Erro ao importar bitcoinlib: {e}")
+            logger.error(f"Python path: {sys.path}")
+            return JsonResponse({
+                "status": "error",
+                "message": f"Erro ao importar bitcoinlib: {str(e)}",
+                "python_path": sys.path
+            }, status=500)
+
     def __init__(self):
         self.service = Service(network='bitcoin', providers=['blockstream', 'blockcypher'])
     ## MARK: Watch only
@@ -45,6 +79,8 @@ class WalletService:
             else:
                 raise ValueError("Tipo de xpub não reconhecido")
 
+            logger.info(f"Criando carteira com purpose={purpose}, witness_type={witness_type}")
+
             # Cria a carteira na bitcoinlib
             bitcoinlib_wallet = BitcoinlibWallet.create(
                 name=f"watch_only_{wallet.id}",
@@ -52,9 +88,11 @@ class WalletService:
                 network='bitcoin',
                 purpose=purpose,
                 witness_type=witness_type,
-                scheme='bip32'  # Use 'bip32' em vez de 'account'
+                scheme='bip32'
             )
             
+            logger.info(f"Carteira bitcoinlib criada com sucesso: {bitcoinlib_wallet.name}")
+
             # Gera alguns endereços iniciais
             self._generate_addresses(wallet, bitcoinlib_wallet, 5)
             
@@ -69,12 +107,19 @@ class WalletService:
         addresses = []
         
         try:
-            for i in range(count):
-                # Use o método get_key para derivar o endereço
-                key = bitcoinlib_wallet.get_key(change=int(is_change), address_index=i)
+            # Gera os endereços
+            keys = bitcoinlib_wallet.get_key(
+                account_id=0,  # Usamos a conta 0 por padrão
+                change=int(is_change),
+                number_of_keys=count
+            )
+            
+            # Se apenas uma chave for retornada, coloque-a em uma lista
+            if not isinstance(keys, list):
+                keys = [keys]
+            
+            for i, key in enumerate(keys):
                 address_str = key.address
-                
-                # O caminho é automaticamente gerado pela bitcoinlib
                 path = key.path
                 
                 # Salva o endereço no banco de dados
