@@ -164,17 +164,30 @@ class WalletService:
             result = []
             wallets = Wallet.objects.filter(user=user)
 
-            print("user wallets", wallets)
+            logger.info(f"Número de carteiras encontradas para o usuário {user.id}: {wallets.count()}")
+
             for wallet in wallets:
                 wallet_name = f"watch_only_{wallet.id}"
-                print(f"Inicializando carteira com o nome: {wallet_name}")
+                logger.info(f"Inicializando carteira com o nome: {wallet_name}")
+                logger.info(f"Dados da carteira: {wallet.__dict__}")
 
-                btc_wallet = BitcoinlibWallet(wallet_name)
+                try:
+                    btc_wallet = BitcoinlibWallet(wallet_name)
+                    logger.info(f"Carteira {wallet_name} inicializada com sucesso")
+                except Exception as e:
+                    logger.error(f"Erro ao inicializar a carteira {wallet_name}: {str(e)}")
+                    continue
 
-                transactions = btc_wallet.transactions()
+                try:
+                    transactions = btc_wallet.transactions()
+                    logger.info(f"Número de transações encontradas para {wallet_name}: {len(transactions)}")
+                except Exception as e:
+                    logger.error(f"Erro ao obter transações para {wallet_name}: {str(e)}")
+                    continue
 
                 for tx in transactions:
-                    print(f"Transação {tx.txid}, Status: {tx.status}, Confirmations: {tx.confirmations}")
+                    logger.info(f"Processando transação {tx.txid}")
+                    logger.info(f"Transação {tx.txid}, Status: {tx.status}, Confirmations: {tx.confirmations}")
 
                     # Acessando a data da transação
                     tx_date = getattr(tx, "date", None)
@@ -187,7 +200,7 @@ class WalletService:
                         total_value += output.value
 
                     # Verificando se a transação foi enviada ou recebida
-                    user_address = "seu_endereco_aqui"  # Endereço do usuário
+                    user_address = wallet.address  # Usando o endereço da carteira do usuário
                     is_sent = False
                     is_received = False
 
@@ -211,12 +224,14 @@ class WalletService:
                         "transaction_type": transaction_type,
                     })
 
+                    logger.info(f"Transação {tx.txid} processada com sucesso")
+
+            logger.info(f"Total de transações processadas para o usuário {user.id}: {len(result)}")
             return result
 
         except Exception as e:
-            logger.error(f"Erro ao obter transações do usuário: {str(e)}")
+            logger.error(f"Erro geral ao obter transações do usuário {user.id}: {str(e)}")
             raise
-
 
     def get_all_wallets(self, wallets):
         """
