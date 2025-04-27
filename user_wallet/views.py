@@ -94,11 +94,7 @@ class WalletViewSet(viewsets.ModelViewSet):
                 {"error": "Campo 'pubKey' é obrigatório"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-
-        response = requests.get(
-            "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=brl"
-        )
-        btc_to_brl = response.json().get("bitcoin", {}).get("brl", 0)
+        btc_to_brl = wallet_service._get_btc_price()
 
         try:
             balance = wallet_service.get_wallet_balance({

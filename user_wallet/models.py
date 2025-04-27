@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.utils import timezone
 
 class Wallet(models.Model) :
     """
@@ -57,3 +58,19 @@ class Transaction(models.Model):
     
     def __str__(self):
         return f"{self.txid} ({self.status})"
+
+class BitcoinPriceCache(models.Model):
+    price = models.FloatField(default=0)
+    last_updated = models.DateTimeField(auto_now=True)
+    
+    @classmethod
+    def get_cached_price(cls):
+        instance, created = cls.objects.get_or_create(
+            id=1,
+            defaults={'price': 0}
+        )
+        return instance
+
+    class Meta:
+        verbose_name = "Bitcoin Price Cache"
+        verbose_name_plural = "Bitcoin Price Caches"
