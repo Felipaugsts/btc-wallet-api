@@ -22,17 +22,6 @@ class WalletService:
         self.service = Service(network='bitcoin', providers=['blockstream', 'blockcypher'])
     ## MARK: Watch only
     def create_watch_only_wallet(self, name, xpub, user):
-        """
-        Cria uma carteira watch-only a partir de um xpub
-        
-        Args:
-            name (str): Nome da carteira
-            xpub (str): Chave pública estendida (xpub, ypub ou zpub)
-            user (User): Usuário proprietário da carteira
-            
-        Returns:
-            Wallet: Objeto da carteira criada
-        """
         try:
             # Cria a carteira no banco de dados
             wallet = Wallet.objects.create(
@@ -43,12 +32,13 @@ class WalletService:
             )
             
             # Cria a carteira na bitcoinlib
-            # Usamos o modo 'single' para criar uma carteira somente com a chave pública
             bitcoinlib_wallet = BitcoinlibWallet.create(
                 name=f"watch_only_{wallet.id}",
                 keys=xpub,
                 network='bitcoin',
-                witness_type='segwit'  # Usar SegWit por padrão
+                purpose=44,  # Use 44 para BIP44, 49 para P2SH-SegWit, ou 84 para SegWit nativo
+                witness_type='segwit',  # ou 'p2sh-segwit' ou None para legacy
+                scheme='account'
             )
             
             # Gera alguns endereços iniciais
@@ -58,22 +48,9 @@ class WalletService:
         except Exception as e:
             logger.error(f"Erro ao criar carteira watch-only: {str(e)}")
             raise
-    
     ## MARK: Address
 
     def _generate_addresses(self, wallet, bitcoinlib_wallet, count=1, is_change=False):
-        """
-        Gera endereços para uma carteira
-        
-        Args:
-            wallet (Wallet): Objeto da carteira no banco de dados
-            bitcoinlib_wallet (BitcoinlibWallet): Objeto da carteira na bitcoinlib
-            count (int): Número de endereços a gerar
-            is_change (bool): Se são endereços de troco (True) ou recebimento (False)
-            
-        Returns:
-            list: Lista de endereços gerados
-        """
         addresses = []
         
         try:
@@ -90,11 +67,13 @@ class WalletService:
                 # Determina o caminho de derivação
                 account = 0  # Usamos a conta 0 por padrão
                 change = 1 if is_change else 0
-                path = f"m/44'/0'/{account}'/{change}/{i}"
                 
-                # Deriva o endereço
-                key = bitcoinlib_wallet.key_for_path(path)
-                address_str = key.address()
+                # Derive o endereço usando o método get_key
+                key = bitcoinlib_wallet.get_key(account_id=account, change=change, address_index=i)
+                address_str = key.address
+                
+                # Constrói o caminho para salvar no banco de dados
+                path = f"m/{bitcoinlib_wallet.purpose}'/{bitcoinlib_wallet.network.bip44_cointype}'/{account}'/{change}/{i}"
                 
                 # Salva o endereço no banco de dados
                 address = Address.objects.create(
@@ -106,6 +85,7 @@ class WalletService:
                 )
                 
                 addresses.append(address)
+                logger.info(f"Gerado endereço: {address_str} com caminho: {path}")
         except Exception as e:
             logger.error(f"Erro ao gerar endereços: {str(e)}")
             raise
