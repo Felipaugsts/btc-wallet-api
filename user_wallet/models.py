@@ -62,7 +62,10 @@ class Transaction(models.Model):
 class BitcoinPriceCache(models.Model):
     price = models.FloatField(default=0)
     last_updated = models.DateTimeField(auto_now=True)
-    
+    change24h = models.FloatField(default=0)
+    low24h = models.FloatField(default=0)
+    high24h = models.FloatField(default=0)
+
     @classmethod
     def get_cached_price(cls):
         instance, created = cls.objects.get_or_create(

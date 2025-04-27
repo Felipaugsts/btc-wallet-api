@@ -2,7 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from .models import Wallet, Address, Transaction
+from .models import BitcoinPriceCache, Wallet, Address, Transaction
 from .serializers import (
     WalletSerializer, WalletCreateSerializer, AddressSerializer,
     TransactionSerializer, TransactionCreateSerializer, BroadcastTransactionSerializer
@@ -94,6 +94,7 @@ class WalletViewSet(viewsets.ModelViewSet):
                 {"error": "Campo 'pubKey' é obrigatório"},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        
         btc_to_brl = wallet_service._get_btc_price()
 
         try:
@@ -190,32 +191,18 @@ class WalletViewSet(viewsets.ModelViewSet):
         
     @action(detail=False, methods=['get'], url_path='btc-price')
     def bitcoin_price(self, request):
-        try:
-            url = "https://api.coingecko.com/api/v3/coins/markets"
-            params = {
-                "vs_currency": "brl",
-                "ids": "bitcoin"
+        wallet_service = WalletService()
+        wallet_service._get_btc_price()
+        cache = BitcoinPriceCache.get_cached_price()
+        result = {
+                "currentPrice": cache.price,
+                "change24h": cache.change24h,
+                "low24h": cache.low24h,
+                "high24h": cache.high24h
             }
-            response = requests.get(url, params=params)
-            response.raise_for_status()
-            data = response.json()
-
-            if data:
-                btc_data = data[0]
-                result = {
-                    "currentPrice": btc_data.get("current_price"),
-                    "change24h": btc_data.get("price_change_percentage_24h"),
-                    "low24h": btc_data.get("low_24h"),
-                    "high24h": btc_data.get("high_24h")
-                }
-                return Response(result, status=status.HTTP_200_OK)
-            else:
-                return Response({"error": "Dados do Bitcoin não encontrados."}, status=status.HTTP_404_NOT_FOUND)
-
-        except Exception as e:
-            logger.error(f"Erro ao buscar histórico de preço: {str(e)}")
-            return Response({"error": "Falha ao obter dados de preço do Bitcoin"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+        
+        return Response(result, status=status.HTTP_200_OK)
+    
     @action(detail=False, methods=['post'], url_path='price-history')
     def price_history(self, request):
         period = request.data.get('period', '1m')  # '24h', '7d', '1m', '6m', '1y'

@@ -298,34 +298,56 @@ class WalletService:
         """Obtém o preço do BTC com cache de 1 hora ou se o preço atual for zero"""
         try:
             cache = BitcoinPriceCache.get_cached_price()
-            
+
             # Calcula o tempo desde a última atualização (em segundos)
             time_since_update = (timezone.now() - cache.last_updated).total_seconds()
-            
+
             # Verifica se precisa atualizar: cache expirado (mais de 1 hora) ou preço zero
             if time_since_update > 3600 or cache.price == 0.0:
                 try:
                     # Chama a API para obter o preço atual do BTC apenas quando necessário
-                    response = requests.get(
-                        "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=brl",
-                        timeout=5
-                    )
-                    print("ENTROU AQUI", time_since_update, cache.price)
-                    response.raise_for_status()  # Verifica se a requisição falhou
-                    
-                    bitcoin_data = response.json().get("bitcoin", {})
-                    new_price = bitcoin_data.get("brl", 0.0)
-                    
-                    # Só atualiza se o novo preço for válido e diferente de zero
-                    if new_price and new_price != 0.0:
-                        with transaction.atomic():
-                            cache.price = new_price
-                            cache.last_updated = timezone.now()  # Atualiza o timestamp
-                            cache.save()
-                            logger.info(f"Preço do BTC atualizado com sucesso: {new_price}")
+                    print("calling coingecko API", time_since_update > 3600, time_since_update)
+
+                    url = "https://api.coingecko.com/api/v3/coins/markets"
+                    params = {
+                        "vs_currency": "brl",
+                        "ids": "bitcoin"
+                    }
+
+                    result = requests.get(url, params=params)
+                    result.raise_for_status()
+
+                    # O retorno da API é uma lista, então acessamos o primeiro item
+                    bitcoin_data = result.json()
+
+                    # Verifique se a lista está vazia, e se não, pegue o primeiro item
+                    if bitcoin_data:
+                        bitcoin_info = bitcoin_data[0]  # Acessa o primeiro item da lista
+                        new_price = bitcoin_info.get("current_price", 0.0)
+                        change24h = bitcoin_info.get("price_change_percentage_24h", 0.0)
+                        low24h = bitcoin_info.get("low_24h", 0.0)
+                        high24h = bitcoin_info.get("high_24h", 0.0)
+
+                        print("change24h", change24h)
+
+                        # Só atualiza se o novo preço for válido e diferente de zero
+                        if new_price and new_price != 0.0:
+                            with transaction.atomic():
+                                cache.price = new_price
+                                cache.change24h = change24h
+                                cache.low24h = low24h
+                                cache.high24h = high24h
+                                cache.last_updated = timezone.now()
+                                cache.save()
+                                print("salvo 123", cache)
+                                logger.info(f"Preço do BTC atualizado com sucesso: {new_price}")
+                        else:
+                            logger.warning("Preço retornado pela API é zero ou inválido, mantendo o cache atual")
+                            return cache.price
                     else:
-                        logger.warning("Preço retornado pela API é zero ou inválido, mantendo o cache atual")
-                
+                        logger.warning("A resposta da API não contém dados válidos para o Bitcoin.")
+                        return cache.price  # Retorna o preço do cache se a resposta estiver vazia
+
                 except requests.RequestException as api_error:
                     logger.error(f"Erro ao chamar API para obter o preço do BTC: {str(api_error)}")
                     # Mantém o cache existente em caso de erro de API
@@ -333,7 +355,7 @@ class WalletService:
             # Retorna o preço atual do cache, a menos que seja zero
             if cache.price == 0.0:
                 logger.warning("Preço do BTC ainda está zero no cache.")
-                return 0  # Retorna zero se o preço no cache for zero
+                return -100
 
             logger.info(f"USING CACHED BTC PRICE {cache.price}")
             return cache.price  # Retorna o preço do cache caso não precise atualizar
@@ -341,6 +363,3 @@ class WalletService:
         except Exception as e:
             logger.error(f"Erro ao obter ou atualizar preço do BTC: {str(e)}")
             return 0  # Retorna 0 em caso de erro geral
-class WalletServiceError(Exception):
-    """Classe base para exceções do WalletService"""
-    pass
